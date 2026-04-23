@@ -25,8 +25,8 @@ type pdfImageMeta struct {
 	streamStart int64
 }
 
-// extractPDFImagesDirect reads image streams directly from the PDF one at a time,
-// bypassing pdfcpu's full-parse approach. Supports FlateDecode+PNG predictor and DCTDecode.
+// extractPDFImagesDirect はPDFから画像ストリームを1枚ずつ直接読み込みます。
+// FlateDecode（PNG predictor 10〜15）と DCTDecode に対応しています。
 func extractPDFImagesDirect(pdfPath, destDir string) ([]string, error) {
 	f, err := os.Open(pdfPath)
 	if err != nil {
@@ -94,7 +94,7 @@ func extractPDFImagesDirect(pdfPath, destDir string) ([]string, error) {
 	return paths, nil
 }
 
-// pdfFindStartXRef reads the last 1024 bytes to locate the startxref offset.
+// pdfFindStartXRef はファイル末尾 1024 バイトを読み startxref オフセットを返します。
 func pdfFindStartXRef(f *os.File, fileSize int64) (int64, error) {
 	const tailLen = 1024
 	seekPos := fileSize - tailLen
@@ -123,7 +123,7 @@ func pdfFindStartXRef(f *os.File, fileSize int64) (int64, error) {
 	return off, nil
 }
 
-// pdfParseXRefTable parses a traditional (non-stream) cross-reference table.
+// pdfParseXRefTable は従来形式（非ストリーム）の XRef テーブルをパースします。
 func pdfParseXRefTable(f *os.File, offset int64) (map[int]int64, error) {
 	if _, err := f.Seek(offset, io.SeekStart); err != nil {
 		return nil, err
@@ -188,8 +188,8 @@ var (
 	rePredictor    = regexp.MustCompile(`/Predictor\s+(\d+)`)
 )
 
-// pdfReadImageMeta reads the object at offset and returns its image metadata.
-// Returns (meta, true, nil) for a supported image XObject, (_, false, nil) otherwise.
+// pdfReadImageMeta は指定オフセットのオブジェクトを読み画像メタデータを返します。
+// 対応画像 XObject なら (meta, true, nil)、それ以外は (_, false, nil) を返します。
 func pdfReadImageMeta(f *os.File, offset int64) (pdfImageMeta, bool, error) {
 	if _, err := f.Seek(offset, io.SeekStart); err != nil {
 		return pdfImageMeta{}, false, nil
@@ -260,9 +260,8 @@ func pdfReadImageMeta(f *os.File, offset int64) (pdfImageMeta, bool, error) {
 	return meta, true, nil
 }
 
-// pdfExtractFlateAsPNG wraps a FlateDecode+PNG-predictor stream in a PNG container.
-// PDF FlateDecode data with Predictor 10-15 is identical to PNG IDAT data,
-// so no decompression is needed — just rewrap in PNG chunk format.
+// pdfExtractFlateAsPNG は FlateDecode+PNG predictor ストリームを PNG コンテナに包んで保存します。
+// Predictor 10〜15 のストリームバイトは PNG IDAT と同一フォーマットのため解凍不要です。
 func pdfExtractFlateAsPNG(f *os.File, meta pdfImageMeta, outPath string) error {
 	if _, err := f.Seek(meta.streamStart, io.SeekStart); err != nil {
 		return err
@@ -289,7 +288,7 @@ func pdfExtractFlateAsPNG(f *os.File, meta pdfImageMeta, outPath string) error {
 	return pdfWriteSyntheticPNG(out, meta.width, meta.height, meta.bpc, colorType, compressed)
 }
 
-// pdfExtractDCTAsJPEG copies a DCTDecode stream directly as a JPEG file.
+// pdfExtractDCTAsJPEG は DCTDecode ストリームを JPEG ファイルとして直接コピーします。
 func pdfExtractDCTAsJPEG(f *os.File, meta pdfImageMeta, outPath string) error {
 	if _, err := f.Seek(meta.streamStart, io.SeekStart); err != nil {
 		return err
@@ -303,7 +302,7 @@ func pdfExtractDCTAsJPEG(f *os.File, meta pdfImageMeta, outPath string) error {
 	return err
 }
 
-// pdfWriteSyntheticPNG writes a PNG file using raw FlateDecode bytes as IDAT chunks.
+// pdfWriteSyntheticPNG は FlateDecode の生バイトを IDAT チャンクとして使い PNG ファイルを書き出します。
 func pdfWriteSyntheticPNG(w io.Writer, width, height, bpc int, colorType byte, data []byte) error {
 	if _, err := w.Write([]byte{137, 80, 78, 71, 13, 10, 26, 10}); err != nil {
 		return err

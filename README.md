@@ -1,14 +1,14 @@
 # zipdf
 
-ZIPアーカイブ内の画像をファイル名順でPDFに結合するコマンドラインツール。
+A command-line tool that merges images inside ZIP archives into a single PDF, sorted by filename.
 
-## 目的
+## Purpose
 
-- ZIP内の画像（jpg/jpeg/png/webp）をファイル名順に並べてPDF化する
-- 複数のZIPを一括処理し、1 ZIP → 1 PDF を出力する
-- コマンドラインで利用することを前提とする
+- Convert images (jpg/jpeg/png/webp) inside a ZIP into a PDF, sorted by filename
+- Process multiple ZIPs in bulk — one ZIP produces one PDF
+- Designed for command-line use
 
-## インストール
+## Installation
 
 ```bash
 git clone https://github.com/misty-rc/zipdf
@@ -16,48 +16,48 @@ cd zipdf
 go build -o zipdf.exe .
 ```
 
-## 使い方
+## Usage
 
 ```bash
-# 指定ディレクトリ内の *.zip をすべて処理（デフォルト品質85でJPEG再エンコード）
+# Process all *.zip files in the specified directory (JPEG re-encode at quality 85)
 ./zipdf -i ./archive
 
-# 品質を変えて処理
+# Set a custom quality
 ./zipdf -i ./archive -q 70
 
-# 再エンコードなし（元画像をそのまま埋め込む）
+# No re-encoding (embed original images as-is)
 ./zipdf -i ./archive --no-compress
 
-# カレントディレクトリを処理
+# Process the current directory
 ./zipdf
 
-# 既存PDFを再圧縮（<元ファイル名>_compressed.pdf として出力）
+# Re-compress an existing PDF (outputs <name>_compressed.pdf)
 ./zipdf --recompress -i ./pdfs -q 70
 
-# 既存PDFを再圧縮して上書き
+# Re-compress and overwrite the original
 ./zipdf --recompress --override -i ./pdfs -q 70
 ```
 
-## フラグ
+## Flags
 
-| フラグ | デフォルト | 説明 |
+| Flag | Default | Description |
 |---|---|---|
-| `-i`, `--input` | `.`（カレント） | 処理対象ディレクトリ |
-| `-q`, `--quality` | `85` | JPEG再エンコード品質（1〜100）|
-| `--no-compress` | `false` | 再エンコードを無効化し元画像をそのまま埋め込む |
-| `--recompress` | `false` | 既存PDFの埋め込み画像を再エンコードして再PDF化する |
-| `--override` | `false` | `--recompress` 時に元ファイルを上書きする（単独使用不可） |
+| `-i`, `--input` | `.` (current dir) | Directory to process |
+| `-q`, `--quality` | `85` | JPEG re-encode quality (1–100) |
+| `--no-compress` | `false` | Disable re-encoding; embed original images |
+| `--recompress` | `false` | Re-encode embedded images in existing PDFs |
+| `--override` | `false` | Overwrite the original file when using `--recompress` (cannot be used alone) |
 
-## 対応フォーマット
+## Supported Formats
 
 `.jpg` / `.jpeg` / `.png` / `.webp`
 
-## 出力
+## Output
 
-ZIPと同じディレクトリに `<ZIPファイル名>.pdf` を生成する。
+Each ZIP produces `<zip-name>.pdf` in the same directory as the ZIP file.
 
-## 技術スタック
+## Tech Stack
 
 - Go
-- [gopdf](https://github.com/signintech/gopdf) — PDF生成
-- [golang.org/x/image](https://pkg.go.dev/golang.org/x/image) — WebPデコード
+- [gopdf](https://github.com/signintech/gopdf) — PDF generation
+- [golang.org/x/image](https://pkg.go.dev/golang.org/x/image) — WebP decoding

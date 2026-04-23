@@ -70,21 +70,9 @@ func ProcessZip(zipPath string, quality int) error {
 		return bases[i] < bases[j]
 	})
 
-	var images []imageInfo
-	if quality > 0 {
-		images, err = reencodeAll(extractedPaths, quality)
-		if err != nil {
-			return err
-		}
-	} else {
-		images = make([]imageInfo, len(extractedPaths))
-		for i, p := range extractedPaths {
-			w, h, err := getImageDimensions(p)
-			if err != nil {
-				return fmt.Errorf("画像サイズの取得に失敗しました (%s): %w", filepath.Base(p), err)
-			}
-			images[i] = imageInfo{path: p, width: w, height: h}
-		}
+	images, err := prepareImages(extractedPaths, quality)
+	if err != nil {
+		return err
 	}
 
 	pdfPath := strings.TrimSuffix(zipPath, filepath.Ext(zipPath)) + ".pdf"
@@ -127,6 +115,22 @@ func reencodeAll(paths []string, quality int) ([]imageInfo, error) {
 		infos[i] = r.info
 	}
 	return infos, nil
+}
+
+// prepareImages は quality > 0 なら JPEG 再エンコード、0 なら寸法取得のみを行い imageInfo のスライスを返します。
+func prepareImages(paths []string, quality int) ([]imageInfo, error) {
+	if quality > 0 {
+		return reencodeAll(paths, quality)
+	}
+	images := make([]imageInfo, len(paths))
+	for i, p := range paths {
+		w, h, err := getImageDimensions(p)
+		if err != nil {
+			return nil, fmt.Errorf("画像サイズの取得に失敗しました (%s): %w", filepath.Base(p), err)
+		}
+		images[i] = imageInfo{path: p, width: w, height: h}
+	}
+	return images, nil
 }
 
 // extractFile はzip内のファイルを一時ディレクトリに展開し、そのパスを返します。
@@ -272,21 +276,9 @@ func ProcessPDF(pdfPath string, quality int, override bool) error {
 	}
 	fmt.Printf("  %d 枚抽出完了、再エンコード中...\n", len(imagePaths))
 
-	var images []imageInfo
-	if quality > 0 {
-		images, err = reencodeAll(imagePaths, quality)
-		if err != nil {
-			return err
-		}
-	} else {
-		images = make([]imageInfo, len(imagePaths))
-		for i, p := range imagePaths {
-			w, h, err := getImageDimensions(p)
-			if err != nil {
-				return fmt.Errorf("画像サイズの取得に失敗しました (%s): %w", filepath.Base(p), err)
-			}
-			images[i] = imageInfo{path: p, width: w, height: h}
-		}
+	images, err := prepareImages(imagePaths, quality)
+	if err != nil {
+		return err
 	}
 
 	ext := filepath.Ext(pdfPath)
@@ -319,7 +311,6 @@ func ProcessPDF(pdfPath string, quality int, override bool) error {
 	}
 	return nil
 }
-
 
 // uniqueName はZIP内で同名ファイルが重複した場合に一意なファイル名を返します。
 // 生成した名前も seen に登録するため、元ファイル名との衝突も防止します。
