@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/misty/.claude/standards/**)",
+      "Edit(/.claude/skills/build/**)",
+      "Edit(/.claude/skills/review/**)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\misty\\dev\\go\\zipdf\\.claude\\skills"
+    ]
+  }
+}

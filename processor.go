@@ -4,156 +4,237 @@ import (
 	"archive/zip"
 	"fmt"
 	"image"
-	_ "image/jpeg"
+	"image/draw"
+	"image/jpeg"
 	"image/png"
-	_ "golang.org/x/image/webp"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
+
+	_ "golang.org/x/image/webp"
 
 	"github.com/signintech/gopdf"
 )
 
+type imageInfo struct {
+	path          string
+	width, height int
+}
+
 // ProcessZip は1つのzipファイルを処理し、同名のPDFファイルを生成します。
-func ProcessZip(zipPath string) error {
-	// 一時ディレクトリの作成
+// quality が 1〜100 の場合、再エンコードを並列処理します。
+func ProcessZip(zipPath string, quality int) error {
 	tempDir, err := os.MkdirTemp("", "zip2pdf-*")
 	if err != nil {
 		return fmt.Errorf("一時ディレクトリの作成に失敗しました: %w", err)
 	}
-	defer os.RemoveAll(tempDir) // 処理終了後に必ず削除
+	defer os.RemoveAll(tempDir)
 
-	// zipファイルを開く
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
-		return fmt.Errorf("zipファイルの展開に失敗しました: %w", err)
+		return fmt.Errorf("zipファイルのオープンに失敗しました: %w", err)
 	}
 	defer r.Close()
 
-	var extractedImages []string
+	var extractedPaths []string
+	seen := make(map[string]struct{})
 
-	// zip内のファイルを走査して画像を抽出
 	for _, f := range r.File {
-		if f.FileInfo().IsDir() {
+		if f.Mode().IsDir() {
 			continue
 		}
-
 		ext := strings.ToLower(filepath.Ext(f.Name))
-		if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" {
-			// 一時ファイルとして保存
-			extractedPath, err := extractFile(f, tempDir)
-			if err != nil {
-				return fmt.Errorf("ファイル %s の抽出に失敗しました: %w", f.Name, err)
-			}
-			extractedImages = append(extractedImages, extractedPath)
+		if ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp" {
+			continue
 		}
+		extractedPath, err := extractFile(f, tempDir, seen)
+		if err != nil {
+			return fmt.Errorf("ファイル %s の抽出に失敗しました: %w", f.Name, err)
+		}
+		extractedPaths = append(extractedPaths, extractedPath)
 	}
 
-	if len(extractedImages) == 0 {
+	if len(extractedPaths) == 0 {
 		return fmt.Errorf("zip内に有効な画像ファイルが見つかりませんでした")
 	}
 
-	// 元のファイル名順にソート（パスのベースネームで比較）
-	sort.Slice(extractedImages, func(i, j int) bool {
-		return filepath.Base(extractedImages[i]) < filepath.Base(extractedImages[j])
+	bases := make([]string, len(extractedPaths))
+	for i, p := range extractedPaths {
+		bases[i] = filepath.Base(p)
+	}
+	sort.Slice(extractedPaths, func(i, j int) bool {
+		return bases[i] < bases[j]
 	})
 
-	// PDF出力先パスの決定 (元のzipの名前の拡張子を .pdf に変更)
+	var images []imageInfo
+	if quality > 0 {
+		images, err = reencodeAll(extractedPaths, quality)
+		if err != nil {
+			return err
+		}
+	} else {
+		images = make([]imageInfo, len(extractedPaths))
+		for i, p := range extractedPaths {
+			w, h, err := getImageDimensions(p)
+			if err != nil {
+				return fmt.Errorf("画像サイズの取得に失敗しました (%s): %w", filepath.Base(p), err)
+			}
+			images[i] = imageInfo{path: p, width: w, height: h}
+		}
+	}
+
 	pdfPath := strings.TrimSuffix(zipPath, filepath.Ext(zipPath)) + ".pdf"
-	
-	err = generatePDF(extractedImages, pdfPath)
-	if err != nil {
+	if err := generatePDF(images, pdfPath); err != nil {
 		return fmt.Errorf("PDFの生成に失敗しました: %w", err)
 	}
 
-	fmt.Printf("成功: %s -> %s (%d ページ)\n", filepath.Base(zipPath), filepath.Base(pdfPath), len(extractedImages))
+	fmt.Printf("成功: %s -> %s (%d ページ)\n", filepath.Base(zipPath), filepath.Base(pdfPath), len(images))
 	return nil
+}
+
+// reencodeAll は画像を runtime.NumCPU() 並列でJPEG再エンコードします。
+func reencodeAll(paths []string, quality int) ([]imageInfo, error) {
+	type result struct {
+		info imageInfo
+		err  error
+	}
+	results := make([]result, len(paths))
+	sem := make(chan struct{}, runtime.NumCPU())
+	var wg sync.WaitGroup
+
+	for i, p := range paths {
+		wg.Add(1)
+		i, p := i, p
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			info, err := reencodeAsJPEG(p, quality)
+			results[i] = result{info, err}
+		}()
+	}
+	wg.Wait()
+
+	infos := make([]imageInfo, len(paths))
+	for i, r := range results {
+		if r.err != nil {
+			return nil, fmt.Errorf("JPEG再エンコードに失敗しました (%s): %w", filepath.Base(paths[i]), r.err)
+		}
+		infos[i] = r.info
+	}
+	return infos, nil
 }
 
 // extractFile はzip内のファイルを一時ディレクトリに展開し、そのパスを返します。
 // WebP画像の場合は、gopdfがサポートしていないためPNGに変換して保存します。
-func extractFile(f *zip.File, destDir string) (string, error) {
+func extractFile(f *zip.File, destDir string, seen map[string]struct{}) (string, error) {
 	rc, err := f.Open()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("zipエントリのオープンに失敗しました: %w", err)
 	}
 	defer rc.Close()
 
 	ext := strings.ToLower(filepath.Ext(f.Name))
-	baseName := filepath.Base(f.Name)
-	
-	destPath := filepath.Join(destDir, baseName)
-	
-	// WebPの場合はPNGに変換して保存
-	if ext == ".webp" {
-		destPath = filepath.Join(destDir, strings.TrimSuffix(baseName, ext)+".png")
-		
-		img, _, err := image.Decode(rc)
-		if err != nil {
-			return "", fmt.Errorf("webpのデコードに失敗しました: %w", err)
-		}
+	baseName := uniqueName(filepath.Base(f.Name), seen)
 
-		// 16-bit PNGを回避するため、8-bitのRGBAに描画し直す
-		bounds := img.Bounds()
-		rgbaImg := image.NewRGBA(bounds)
-		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
-			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				rgbaImg.Set(x, y, img.At(x, y))
-			}
-		}
-		
-		outFile, err := os.Create(destPath)
-		if err != nil {
-			return "", err
-		}
-		defer outFile.Close()
-		
-		err = png.Encode(outFile, rgbaImg)
-		if err != nil {
-			return "", fmt.Errorf("pngへのエンコードに失敗しました: %w", err)
-		}
-		
-		return destPath, nil
+	if ext == ".webp" {
+		stem := strings.TrimSuffix(baseName, ext)
+		return extractWebP(rc, destDir, stem)
 	}
 
-	// WebP以外（JPG, PNG等）はそのままコピー
+	destPath := filepath.Join(destDir, baseName)
 	outFile, err := os.Create(destPath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("出力ファイルの作成に失敗しました: %w", err)
 	}
 	defer outFile.Close()
 
-	_, err = io.Copy(outFile, rc)
-	if err != nil {
-		return "", err
+	if _, err := io.Copy(outFile, rc); err != nil {
+		return "", fmt.Errorf("ファイルのコピーに失敗しました: %w", err)
 	}
-
 	return destPath, nil
 }
 
-// generatePDF は画像のリストからPDFを生成します。
-func generatePDF(images []string, outputPath string) error {
-	pdf := gopdf.GoPdf{}
-	pdf.Start(gopdf.Config{PageSize: *gopdf.PageSizeA4})
+// extractWebP はWebP画像をデコードし、8-bit RGBAのPNGとして保存します。
+func extractWebP(rc io.Reader, destDir, stem string) (string, error) {
+	img, _, err := image.Decode(rc)
+	if err != nil {
+		return "", fmt.Errorf("WebPのデコードに失敗しました: %w", err)
+	}
 
-	for _, imgPath := range images {
-		// 画像のサイズを取得
-		width, height, err := getImageDimensions(imgPath)
+	// gopdfが16-bit PNGを扱えないため8-bit RGBAに変換する
+	rgba := image.NewRGBA(img.Bounds())
+	draw.Draw(rgba, rgba.Bounds(), img, img.Bounds().Min, draw.Src)
+
+	destPath := filepath.Join(destDir, stem+".png")
+	outFile, err := os.Create(destPath)
+	if err != nil {
+		return "", fmt.Errorf("出力ファイルの作成に失敗しました: %w", err)
+	}
+	defer outFile.Close()
+
+	if err := png.Encode(outFile, rgba); err != nil {
+		return "", fmt.Errorf("PNGへのエンコードに失敗しました: %w", err)
+	}
+	return destPath, nil
+}
+
+// reencodeAsJPEG は画像をJPEGで再エンコードし、imageInfo（パス・寸法）を返します。
+// デコード時に寸法を取得するため getImageDimensions の呼び出しを省きます。
+// PNGのアルファチャンネルは白背景に合成してからエンコードします。
+func reencodeAsJPEG(imgPath string, quality int) (imageInfo, error) {
+	var src image.Image
+	{
+		f, err := os.Open(imgPath)
 		if err != nil {
-			return fmt.Errorf("画像サイズ取得エラー (%s): %w", filepath.Base(imgPath), err)
+			return imageInfo{}, fmt.Errorf("ファイルのオープンに失敗しました: %w", err)
 		}
-
-		// 画像のサイズに合わせてページを追加（ピクセルからポイントへの変換の簡略化としてそのまま渡す。厳密にはDPI換算が必要ですが今回は簡易的にW,Hをそのまま使用）
-		pdf.AddPageWithOption(gopdf.PageOption{
-			PageSize: &gopdf.Rect{W: float64(width), H: float64(height)},
-		})
-
-		// ページに画像を描画
-		err = pdf.Image(imgPath, 0, 0, &gopdf.Rect{W: float64(width), H: float64(height)})
+		src, _, err = image.Decode(f)
+		f.Close()
 		if err != nil {
-			return fmt.Errorf("画像描画エラー (%s): %w", filepath.Base(imgPath), err)
+			return imageInfo{}, fmt.Errorf("画像のデコードに失敗しました: %w", err)
+		}
+	}
+
+	// JPEGはアルファ非対応のため白背景に合成する
+	bounds := src.Bounds()
+	dst := image.NewRGBA(bounds)
+	draw.Draw(dst, bounds, image.White, image.Point{}, draw.Src)
+	draw.Draw(dst, bounds, src, bounds.Min, draw.Over)
+
+	jpegPath := strings.TrimSuffix(imgPath, filepath.Ext(imgPath)) + "_q.jpg"
+	out, err := os.Create(jpegPath)
+	if err != nil {
+		return imageInfo{}, fmt.Errorf("出力ファイルの作成に失敗しました: %w", err)
+	}
+	defer out.Close()
+
+	if err := jpeg.Encode(out, dst, &jpeg.Options{Quality: quality}); err != nil {
+		return imageInfo{}, fmt.Errorf("JPEGエンコードに失敗しました: %w", err)
+	}
+
+	return imageInfo{
+		path:   jpegPath,
+		width:  bounds.Dx(),
+		height: bounds.Dy(),
+	}, nil
+}
+
+// generatePDF は imageInfo のリストからPDFを生成します。
+// ページサイズは各画像のピクセルサイズをそのままポイント単位として使用します。
+func generatePDF(images []imageInfo, outputPath string) error {
+	pdf := gopdf.GoPdf{}
+	pdf.Start(gopdf.Config{})
+
+	for _, img := range images {
+		rect := &gopdf.Rect{W: float64(img.width), H: float64(img.height)}
+		pdf.AddPageWithOption(gopdf.PageOption{PageSize: rect})
+		if err := pdf.Image(img.path, 0, 0, rect); err != nil {
+			return fmt.Errorf("画像の描画に失敗しました (%s): %w", filepath.Base(img.path), err)
 		}
 	}
 
@@ -162,15 +243,30 @@ func generatePDF(images []string, outputPath string) error {
 
 // getImageDimensions は画像ファイルの幅と高さを取得します。
 func getImageDimensions(imagePath string) (int, int, error) {
-	file, err := os.Open(imagePath)
+	f, err := os.Open(imagePath)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("ファイルのオープンに失敗しました: %w", err)
 	}
-	defer file.Close()
+	defer f.Close()
 
-	config, _, err := image.DecodeConfig(file)
+	cfg, _, err := image.DecodeConfig(f)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("画像設定のデコードに失敗しました: %w", err)
 	}
-	return config.Width, config.Height, nil
+	return cfg.Width, cfg.Height, nil
+}
+
+// uniqueName はZIP内で同名ファイルが重複した場合に一意なファイル名を返します。
+// 生成した名前も seen に登録するため、元ファイル名との衝突も防止します。
+func uniqueName(name string, seen map[string]struct{}) string {
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	candidate := name
+	for i := 1; ; i++ {
+		if _, exists := seen[candidate]; !exists {
+			seen[candidate] = struct{}{}
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s_%d%s", stem, i, ext)
+	}
 }
