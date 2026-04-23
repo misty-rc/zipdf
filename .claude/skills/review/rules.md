@@ -30,8 +30,13 @@
 - `log.Printf` の末尾に `\n` を付けていないか（`log` が自動で改行を付与するため重複）
 
 ### PDF再圧縮（--recompress）
-- `api.ExtractImagesFile(pdfPath, tempDir, nil, nil)` の引数順（inFile, outDir, selectedPages, conf）を守っているか
-- 抽出画像のソートはアルファベット順で正しいか（pdfcpu はページ番号をゼロパディングするため）
+- `extractPDFImagesDirect` が `pdfextract.go` の実装を呼んでいるか（pdfcpu は使わない）
+- `pdfReadImageMeta` でバッファを `endobj` で切り詰めているか（隣接オブジェクト誤検知防止）
+- `pdfReadImageMeta` で `stream\n` / `stream\r\n` より前の dict 部分のみをパターンマッチに使っているか
+- FlateDecode の対応 predictor が 10〜15 であることを確認しているか（Predictor 1 など非対応値はスキップ）
+- 対応 colorSpace が `DeviceRGB` / `DeviceGray` のみであることを確認しているか
+- 画像の並び順が ObjNr 昇順ソートになっているか（ページ順と一致）
+- `*_compressed.pdf` をスキャン対象から除外しているか（main.go の `_compressed` サフィックス判定）
 - `--override` 時は同ディレクトリの一時ファイルへ書き込んでから `os.Rename` で上書きしているか（直接上書きしていないか）
 - `--override` 単独（`--recompress` なし）を `log.Fatalf` で弾いているか
 

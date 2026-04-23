@@ -61,4 +61,3 @@ ZIPと同じディレクトリに `<ZIPファイル名>.pdf` を生成する。
 - Go
 - [gopdf](https://github.com/signintech/gopdf) — PDF生成
 - [golang.org/x/image](https://pkg.go.dev/golang.org/x/image) — WebPデコード
-- [pdfcpu](https://github.com/pdfcpu/pdfcpu) — 既存PDFからの画像抽出（`--recompress` モード）
