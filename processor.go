@@ -256,6 +256,71 @@ func getImageDimensions(imagePath string) (int, int, error) {
 	return cfg.Width, cfg.Height, nil
 }
 
+// ProcessPDF は既存のPDFから画像を抽出し、再エンコードして新しいPDFを生成します。
+// override=true の場合は元ファイルを上書きし、false の場合は _compressed サフィックスを付けて出力します。
+func ProcessPDF(pdfPath string, quality int, override bool) error {
+	tempDir, err := os.MkdirTemp("", "pdf2pdf-*")
+	if err != nil {
+		return fmt.Errorf("一時ディレクトリの作成に失敗しました: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	fmt.Printf("  画像抽出中: %s\n", filepath.Base(pdfPath))
+	imagePaths, err := extractPDFImagesDirect(pdfPath, tempDir)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  %d 枚抽出完了、再エンコード中...\n", len(imagePaths))
+
+	var images []imageInfo
+	if quality > 0 {
+		images, err = reencodeAll(imagePaths, quality)
+		if err != nil {
+			return err
+		}
+	} else {
+		images = make([]imageInfo, len(imagePaths))
+		for i, p := range imagePaths {
+			w, h, err := getImageDimensions(p)
+			if err != nil {
+				return fmt.Errorf("画像サイズの取得に失敗しました (%s): %w", filepath.Base(p), err)
+			}
+			images[i] = imageInfo{path: p, width: w, height: h}
+		}
+	}
+
+	ext := filepath.Ext(pdfPath)
+	outputPath := strings.TrimSuffix(pdfPath, ext) + "_compressed" + ext
+	if override {
+		// 入力ファイルと同じパスへ上書きするため、同ディレクトリの一時ファイルに書き込んでからリネーム
+		tmp, err := os.CreateTemp(filepath.Dir(pdfPath), ".zipdf-tmp-*.pdf")
+		if err != nil {
+			return fmt.Errorf("一時ファイルの作成に失敗しました: %w", err)
+		}
+		tmp.Close()
+		outputPath = tmp.Name()
+	}
+
+	if err := generatePDF(images, outputPath); err != nil {
+		if override {
+			os.Remove(outputPath)
+		}
+		return fmt.Errorf("PDFの生成に失敗しました: %w", err)
+	}
+
+	if override {
+		if err := os.Rename(outputPath, pdfPath); err != nil {
+			os.Remove(outputPath)
+			return fmt.Errorf("ファイルの上書きに失敗しました: %w", err)
+		}
+		fmt.Printf("成功: %s (上書き, %d ページ)\n", filepath.Base(pdfPath), len(images))
+	} else {
+		fmt.Printf("成功: %s -> %s (%d ページ)\n", filepath.Base(pdfPath), filepath.Base(outputPath), len(images))
+	}
+	return nil
+}
+
+
 // uniqueName はZIP内で同名ファイルが重複した場合に一意なファイル名を返します。
 // 生成した名前も seen に登録するため、元ファイル名との衝突も防止します。
 func uniqueName(name string, seen map[string]struct{}) string {

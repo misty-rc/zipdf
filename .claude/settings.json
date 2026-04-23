@@ -5,10 +5,33 @@
       "Edit(/.claude/skills/build/**)",
       "Edit(/.claude/skills/review/**)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(go get *)",
+      "Bash(go env *)",
+      "Bash(grep -r \"func ExtractImages\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/api/\")",
+      "Bash(grep -A 20 \"func ExtractImagesFile\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/api/extract.go\")",
+      "Bash(grep -r \"func WriteImageToDisk\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/\")",
+      "Bash(grep -A 20 \"func WriteImageToDisk\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/pdfcpu/image.go\")",
+      "Bash(grep -n \"type Image struct\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/pdfcpu/model/image.go\")",
+      "Bash(grep -rn \"type Image struct\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/pdfcpu/model/\")",
+      "Bash(grep -n \"func ExtractImagesRaw\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/api/extract.go\")",
+      "Bash(grep -n \"PageNr\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/pdfcpu/extractImage.go\")",
+      "Bash(grep -rn \"PageNr\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/\")",
+      "Bash(grep -n \"\\\\.PageNr\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/pdfcpu/image.go\")",
+      "Bash(grep -n \"img\\\\.PageNr\\\\s*=\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/pdfcpu/extractImage.go\")",
+      "Bash(grep -rn \"\\\\.PageNr\\\\s*=\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/pdfcpu/\")",
+      "Bash(grep -n \"func ImageObjNrs\" \"$\\(go env GOPATH\\)/pkg/mod/github.com/pdfcpu/pdfcpu@v0.12.0/pkg/pdfcpu/extract.go\")",
+      "Bash(.\\\\zipdf.exe --recompress -i archive)",
+      "Bash(Select-String \"dbg|件|エラー\")",
+      "Bash(go run *)",
+      "Bash(kill %1)",
+      "Bash(echo \"exit: $?\")",
+      "PowerShell(cd C:\\\\Users\\\\misty\\\\dev\\\\go\\\\zipdf; $job = Start-Job { go run _pdfinfo_tmp.go 2>&1 } ; Start-Sleep 15; $result = Receive-Job $job; Stop-Job $job; Remove-Job $job; $result)",
+      "Bash(python -c ' *)"
     ],
     "additionalDirectories": [
-      "c:\\Users\\misty\\dev\\go\\zipdf\\.claude\\skills"
+      "c:\\Users\\misty\\dev\\go\\zipdf\\.claude\\skills",
+      "C:\\Users\\misty\\dev\\go\\zipdf\\archive"
     ]
   }
 }

@@ -29,6 +29,12 @@
 - `log.Printf` でエラーを記録しつつ処理を継続する箇所と、`log.Fatalf` で即終了する箇所を使い分けているか
 - `log.Printf` の末尾に `\n` を付けていないか（`log` が自動で改行を付与するため重複）
 
+### PDF再圧縮（--recompress）
+- `api.ExtractImagesFile(pdfPath, tempDir, nil, nil)` の引数順（inFile, outDir, selectedPages, conf）を守っているか
+- 抽出画像のソートはアルファベット順で正しいか（pdfcpu はページ番号をゼロパディングするため）
+- `--override` 時は同ディレクトリの一時ファイルへ書き込んでから `os.Rename` で上書きしているか（直接上書きしていないか）
+- `--override` 単独（`--recompress` なし）を `log.Fatalf` で弾いているか
+
 ## 既知の制約（指摘不要）
 
 - PDFページサイズはDPI変換なし（ピクセル値をポイントとして使用）— 意図的な設計

@@ -30,6 +30,12 @@ go build -o zipdf.exe .
 
 # カレントディレクトリを処理
 ./zipdf
+
+# 既存PDFを再圧縮（<元ファイル名>_compressed.pdf として出力）
+./zipdf --recompress -i ./pdfs -q 70
+
+# 既存PDFを再圧縮して上書き
+./zipdf --recompress --override -i ./pdfs -q 70
 ```
 
 ## フラグ
@@ -39,6 +45,8 @@ go build -o zipdf.exe .
 | `-i`, `--input` | `.`（カレント） | 処理対象ディレクトリ |
 | `-q`, `--quality` | `85` | JPEG再エンコード品質（1〜100）|
 | `--no-compress` | `false` | 再エンコードを無効化し元画像をそのまま埋め込む |
+| `--recompress` | `false` | 既存PDFの埋め込み画像を再エンコードして再PDF化する |
+| `--override` | `false` | `--recompress` 時に元ファイルを上書きする（単独使用不可） |
 
 ## 対応フォーマット
 
@@ -53,3 +61,4 @@ ZIPと同じディレクトリに `<ZIPファイル名>.pdf` を生成する。
 - Go
 - [gopdf](https://github.com/signintech/gopdf) — PDF生成
 - [golang.org/x/image](https://pkg.go.dev/golang.org/x/image) — WebPデコード
+- [pdfcpu](https://github.com/pdfcpu/pdfcpu) — 既存PDFからの画像抽出（`--recompress` モード）
